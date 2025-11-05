@@ -146,3 +146,6 @@ This project is licensed under the MIT License.
 - GitHub Repository: [Your GitHub Repo URL]
 - Docker Hub Repository: [Your Docker Hub Repo URL]
 - Live Demo: [Your deployed app URL if applicable]
+## 🌿 Current Branch
+This commit was made on branch: `feature/cicd-pipeline-setup`
+Timestamp: Wed Nov  5 13:36:01 IST 2025
