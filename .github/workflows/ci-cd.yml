@@ -55,109 +55,30 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Check Docker Hub secrets
-      id: check-secrets
-      run: |
-        if [ -z "${{ secrets.DOCKER_HUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" ]; then
-          echo "missing=true" >> $GITHUB_OUTPUT
-          echo "⚠️ Docker Hub secrets not found. Building image locally only."
-          echo "To enable Docker Hub integration:"
-          echo "1. Set DOCKER_HUB_USERNAME secret"
-          echo "2. Set DOCKER_HUB_ACCESS_TOKEN secret"
-        else
-          echo "missing=false" >> $GITHUB_OUTPUT
-          echo "✅ Docker Hub secrets found"
-        fi
-
-    - name: Login to Docker Hub
-      if: steps.check-secrets.outputs.missing == 'false'
+    - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-    - name: Build Docker image (Docker Hub)
-      if: steps.check-secrets.outputs.missing == 'false'
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_HUB_USERNAME }}/mern-cicd-app
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
         platforms: linux/amd64,linux/arm64
         push: true
-        tags: |
-          ${{ secrets.DOCKER_HUB_USERNAME }}/mern-cicd-app:latest
-          ${{ secrets.DOCKER_HUB_USERNAME }}/mern-cicd-app:${{ github.sha }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-
-    - name: Build Docker image (Local only)
-      if: steps.check-secrets.outputs.missing == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64
-        push: false
-        tags: |
-          local/mern-cicd-app:latest
-          local/mern-cicd-app:${{ github.sha }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Setup complete message
-      if: steps.check-secrets.outputs.missing == 'true'
-      run: |
-        echo "🐳 Docker image built successfully but not pushed to Docker Hub"
-        echo "To enable Docker Hub integration, add these GitHub Secrets:"
-        echo "- DOCKER_HUB_USERNAME"
-        echo "- DOCKER_HUB_ACCESS_TOKEN"
-        echo ""
-        echo "📋 Setup instructions:"
-        echo "1. Go to https://hub.docker.com/ and create an account"
-        echo "2. Generate an access token in Docker Hub settings"
-        echo "3. Add the secrets to your GitHub repository"
-
-    - name: Docker Hub success message
-      if: steps.check-secrets.outputs.missing == 'false'
-      run: |
-        echo "✅ Docker image built and pushed to Docker Hub successfully!"
-        echo "🔗 View at: https://hub.docker.com/r/${{ secrets.DOCKER_HUB_USERNAME }}/mern-cicd-app"
-
-  verify:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-
-    steps:
-    - name: Check Docker Hub secrets for verification
-      id: check-verify-secrets
-      run: |
-        if [ -z "${{ secrets.DOCKER_HUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" ]; then
-          echo "skip=true" >> $GITHUB_OUTPUT
-          echo "⚠️ Docker Hub secrets not found. Skipping image verification."
-        else
-          echo "skip=false" >> $GITHUB_OUTPUT
-          echo "✅ Docker Hub secrets found. Proceeding with verification."
-        fi
-
-    - name: Login to Docker Hub
-      if: steps.check-verify-secrets.outputs.skip == 'false'
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-    - name: Pull and test image
-      if: steps.check-verify-secrets.outputs.skip == 'false'
-      run: |
-        docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/mern-cicd-app:latest
-        docker run -d -p 3000:3000 --name test-container ${{ secrets.DOCKER_HUB_USERNAME }}/mern-cicd-app:latest
-        sleep 10
-        curl -f http://localhost:3000/api/health || exit 1
-        docker stop test-container
-        docker rm test-container
-        echo "✅ Image verification successful!"
-
-    - name: Verification skipped message
-      if: steps.check-verify-secrets.outputs.skip == 'true'
-      run: |
-        echo "⏭️ Image verification skipped - Docker Hub secrets not configured"
-        echo "To enable image verification, add Docker Hub secrets to your repository"
